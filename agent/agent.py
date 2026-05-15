@@ -1,6 +1,9 @@
 import asyncio
 import json
 import os
+import urllib.error
+import urllib.parse
+import urllib.request
 import wave
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,17 +47,44 @@ class Recorder:
 
 
 async def fetch_agent_token() -> tuple[str, str]:
-    import urllib.parse
-    import urllib.request
-
     qs = urllib.parse.urlencode({'room': ROOM_NAME, 'identity': 'ai-agent'})
     url = f'{TOKEN_SERVER}/getAgentToken?{qs}'
+    setup_hint = (
+        "Start the token server first (cd ../server && npm start), or set LIVEKIT_URL and "
+        "AGENT_TOKEN environment variables to skip token fetching."
+    )
+
     try:
         with urllib.request.urlopen(url, timeout=10) as response:
-            data = json.loads(response.read().decode('utf-8'))
-            return data['token'], data['wsUrl']
+            payload = response.read().decode('utf-8')
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode('utf-8', errors='replace')
+        raise RuntimeError(
+            f'Token server request failed ({exc.code}) at {url}. '
+            f'{body or exc.reason}. {setup_hint}'
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f'Failed to reach token server at {url}. {setup_hint}') from exc
     except Exception as exc:
-        raise RuntimeError(f'Failed to fetch agent token from {url}') from exc
+        raise RuntimeError(f'Failed to fetch agent token from {url}. {setup_hint}') from exc
+
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f'Token server returned invalid JSON from {url}. {setup_hint}'
+        ) from exc
+
+    token = data.get('token')
+    ws_url = data.get('wsUrl')
+    if not token or not ws_url:
+        server_error = data.get('error')
+        details = f'Server error: {server_error}. ' if server_error else ''
+        raise RuntimeError(
+            f'{details}Token response missing "token" or "wsUrl" from {url}. {setup_hint}'
+        )
+
+    return token, ws_url
 
 
 async def transcribe(model, wav_path: Path):
