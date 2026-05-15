@@ -1,6 +1,9 @@
 import asyncio
 import json
 import os
+import urllib.error
+import urllib.parse
+import urllib.request
 import wave
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,15 +48,11 @@ class Recorder:
 
 
 async def fetch_agent_token() -> tuple[str, str]:
-    import urllib.error
-    import urllib.parse
-    import urllib.request
-
     qs = urllib.parse.urlencode({'room': ROOM_NAME, 'identity': 'ai-agent'})
     url = f'{TOKEN_SERVER}/getAgentToken?{qs}'
     setup_hint = (
-        "Start the token server first (cd ../server && npm start), or set LIVEKIT_URL and "
-        "AGENT_TOKEN environment variables to skip token fetching."
+        "Start the token server from the repository's server directory using npm start, "
+        "or set LIVEKIT_URL and AGENT_TOKEN environment variables to skip token fetching."
     )
 
     try:
