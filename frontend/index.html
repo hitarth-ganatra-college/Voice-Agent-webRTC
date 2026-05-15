@@ -46,6 +46,7 @@
         : null;
 
       function findLiveKitOnWindow() {
+        // Some CDN/SDK variants expose slightly different global names.
         const candidates = ['LiveKitClient', 'livekitClient', 'LivekitClient', 'LiveKit'];
         for (const name of candidates) {
           const candidate = window[name];
@@ -104,7 +105,7 @@
           liveKitClient = await import(liveKitEsmUrl);
           return liveKitClient;
         } catch (error) {
-          const reason = error?.message || 'SDK import failed without error details';
+          const reason = error?.message || 'SDK import failed: no error details available. Verify the CDN URL is accessible.';
           throw new Error(`LiveKit browser SDK failed to load: ${reason}. Check internet/CDN access and reload.`);
         }
       }
