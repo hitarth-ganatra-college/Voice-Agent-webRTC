@@ -28,7 +28,7 @@
     <h3>Logs</h3>
     <pre id="logs"></pre>
 
-    <script src="https://unpkg.com/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <script src="https://unpkg.com/livekit-client@2.19.0/dist/livekit-client.umd.min.js"></script>
     <script>
       const logsEl = document.getElementById('logs');
       const joinBtn = document.getElementById('joinBtn');
@@ -37,7 +37,7 @@
       const apiBaseEl = document.getElementById('apiBase');
       const roomNameEl = document.getElementById('roomName');
 
-      let liveKitLib =
+      let liveKitSDK =
         window.LiveKitClient ||
         window.livekitClient ||
         null;
@@ -73,10 +73,10 @@
       }
 
       async function resolveLiveKit() {
-        if (liveKitLib) return liveKitLib;
+        if (liveKitSDK) return liveKitSDK;
         try {
-          liveKitLib = await import('https://unpkg.com/livekit-client/dist/livekit-client.esm.mjs');
-          return liveKitLib;
+          liveKitSDK = await import('https://unpkg.com/livekit-client@2.19.0/dist/livekit-client.esm.mjs');
+          return liveKitSDK;
         } catch (error) {
           const detail = error?.message ? ` (${error.message})` : '';
           throw new Error(`LiveKit browser SDK failed to load. Check internet/CDN access and reload.${detail}`);
