@@ -46,7 +46,7 @@ class Recorder:
         self.recordings_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
         safe_identity = ''.join(c if c.isalnum() or c in ('-', '_') else '_' for c in self.participant_identity)
-        identity_hash = hashlib.sha1(self.participant_identity.encode('utf-8')).hexdigest()[:8]
+        identity_hash = hashlib.sha256(self.participant_identity.encode('utf-8')).hexdigest()[:8]
         self.file_path = self.recordings_dir / f'{safe_identity}-{identity_hash}-{timestamp}.wav'
         self._wav = wave.open(str(self.file_path), 'wb')
         self._wav.setnchannels(channels)
@@ -58,7 +58,11 @@ class Recorder:
 
     def push(self, frame: rtc.AudioFrame):
         if self.recording and self._wav is not None:
-            if frame.sample_rate != self._sample_rate or frame.num_channels != self._channels:
+            if (
+                self._sample_rate is not None
+                and self._channels is not None
+                and (frame.sample_rate != self._sample_rate or frame.num_channels != self._channels)
+            ):
                 print(
                     f'Audio format changed for participant={self.participant_identity}; '
                     f'expected {self._sample_rate}Hz/{self._channels}ch, '
@@ -196,7 +200,7 @@ async def run_agent():
             print('Failed parsing control message:', exc)
 
     @room.on('track_subscribed')
-    def on_track_subscribed(track: rtc.Track, _publication: rtc.TrackPublication, participant: rtc.RemoteParticipant):
+    def on_track_subscribed(track: rtc.Track, publication: rtc.TrackPublication, participant: rtc.RemoteParticipant):
         if track.kind != rtc.TrackKind.KIND_AUDIO:
             return
 
