@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Voice Agent (LiveKit)</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 2rem; max-width: 760px; }
+      button { margin-right: 0.5rem; margin-top: 0.5rem; }
+      input { margin-bottom: 0.5rem; width: 280px; }
+      pre { background: #f6f8fa; padding: 1rem; min-height: 220px; overflow: auto; }
+    </style>
+  </head>
+  <body>
+    <h1>AI Voice Agent MVP</h1>
+    <p>Flow: Join room → publish persistent mic track (muted) → START/STOP controls.</p>
+
+    <label>Token Server URL</label><br />
+    <input id="apiBase" value="http://localhost:3000" /><br />
+
+    <label>Room</label><br />
+    <input id="roomName" value="voice-agent-room" /><br />
+
+    <button id="joinBtn">Join Room</button>
+    <button id="startBtn" disabled>START</button>
+    <button id="stopBtn" disabled>STOP</button>
+
+    <h3>Logs</h3>
+    <pre id="logs"></pre>
+
+    <script src="https://unpkg.com/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <script>
+      const logsEl = document.getElementById('logs');
+      const joinBtn = document.getElementById('joinBtn');
+      const startBtn = document.getElementById('startBtn');
+      const stopBtn = document.getElementById('stopBtn');
+      const apiBaseEl = document.getElementById('apiBase');
+      const roomNameEl = document.getElementById('roomName');
+
+      let room;
+      let micTrack;
+
+      const enc = new TextEncoder();
+
+      function log(msg) {
+        logsEl.textContent += `${new Date().toISOString()} ${msg}\n`;
+        logsEl.scrollTop = logsEl.scrollHeight;
+      }
+
+      async function fetchToken(path, roomName) {
+        const identity = `user-${Math.random().toString(36).slice(2, 7)}`;
+        const url = new URL(`${apiBaseEl.value}${path}`);
+        url.searchParams.set('room', roomName);
+        url.searchParams.set('identity', identity);
+
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(`Token request failed: ${res.status}`);
+        }
+        return res.json();
+      }
+
+      async function sendControl(type) {
+        if (!room) return;
+        const payload = JSON.stringify({ type, ts: Date.now() });
+        await room.localParticipant.publishData(enc.encode(payload), { reliable: true });
+        log(`control sent: ${type}`);
+      }
+
+      joinBtn.addEventListener('click', async () => {
+        try {
+          joinBtn.disabled = true;
+          const roomName = roomNameEl.value.trim() || 'voice-agent-room';
+          const tokenData = await fetchToken('/getToken', roomName);
+
+          room = new LivekitClient.Room();
+          room.on(LivekitClient.RoomEvent.Disconnected, () => log('room disconnected'));
+          room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => log(`participant joined: ${p.identity}`));
+          room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (p) => log(`participant left: ${p.identity}`));
+
+          await room.connect(tokenData.wsUrl, tokenData.token);
+          log(`connected as ${tokenData.identity} in room ${tokenData.room}`);
+
+          micTrack = await LivekitClient.createLocalAudioTrack();
+          await room.localParticipant.publishTrack(micTrack);
+          await micTrack.mute();
+          log('persistent microphone track published and muted');
+
+          startBtn.disabled = false;
+          stopBtn.disabled = false;
+        } catch (error) {
+          log(`join failed: ${error.message}`);
+          joinBtn.disabled = false;
+        }
+      });
+
+      startBtn.addEventListener('click', async () => {
+        try {
+          if (!micTrack) return;
+          await micTrack.unmute();
+          await sendControl('START');
+          log('microphone unmuted');
+        } catch (error) {
+          log(`start failed: ${error.message}`);
+        }
+      });
+
+      stopBtn.addEventListener('click', async () => {
+        try {
+          if (!micTrack) return;
+          await micTrack.mute();
+          await sendControl('STOP');
+          log('microphone muted');
+        } catch (error) {
+          log(`stop failed: ${error.message}`);
+        }
+      });
+    </script>
+  </body>
+</html>
