@@ -41,7 +41,7 @@ WHISPER_MODEL=base
 ### 1) Start token server
 
 ```bash
-cd /home/runner/work/Voice-Agent-webRTC/Voice-Agent-webRTC/server
+cd server
 npm install
 npm start
 ```
@@ -49,7 +49,7 @@ npm start
 ### 2) Start AI agent
 
 ```bash
-cd /home/runner/work/Voice-Agent-webRTC/Voice-Agent-webRTC/agent
+cd agent
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -58,7 +58,7 @@ python agent.py
 
 ### 3) Open frontend
 
-Open `/home/runner/work/Voice-Agent-webRTC/Voice-Agent-webRTC/frontend/index.html` in a browser.
+Open `frontend/index.html` in a browser.
 
 1. Click **Join Room**
 2. Click **START** to unmute mic and signal recording start
