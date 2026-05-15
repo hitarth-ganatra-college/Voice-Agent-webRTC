@@ -46,7 +46,6 @@
         : null;
 
       function findLiveKitOnWindow() {
-        // Some CDN/SDK variants expose slightly different global names.
         const candidates = ['LiveKitClient', 'livekitClient', 'LivekitClient', 'LiveKit'];
         for (const name of candidates) {
           const candidate = window[name];
@@ -61,7 +60,7 @@
         return null;
       }
 
-      let liveKitClient = findLiveKitOnWindow();
+      let liveKitClient = null;
 
       let room;
       let micTrack;
@@ -94,6 +93,9 @@
       }
 
       async function resolveLiveKit() {
+        if (!liveKitClient) {
+          liveKitClient = findLiveKitOnWindow();
+        }
         if (liveKitClient) return liveKitClient;
         try {
           if (!liveKitScriptEl) {
@@ -105,8 +107,8 @@
           liveKitClient = await import(liveKitEsmUrl);
           return liveKitClient;
         } catch (error) {
-          const reason = error?.message || 'SDK import failed: no error details available. Verify the CDN URL is accessible.';
-          throw new Error(`LiveKit browser SDK failed to load: ${reason}. Check internet/CDN access and reload.`);
+          const reason = error?.message || 'Unknown error during SDK import';
+          throw new Error(`LiveKit browser SDK failed to load: ${reason}. Check internet/CDN access, verify the CDN URL is reachable, and reload.`);
         }
       }
 
