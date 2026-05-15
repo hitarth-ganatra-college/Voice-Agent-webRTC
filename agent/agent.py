@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 import wave
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import whisper
@@ -28,7 +28,7 @@ class Recorder:
         self._wav.setsampwidth(2)
         self._wav.setframerate(sample_rate)
         self.recording = True
-        print(f'[{datetime.utcnow().isoformat()}] recording started -> {self.file_path}')
+        print(f'[{datetime.now(timezone.utc).isoformat()}] recording started -> {self.file_path}')
 
     def push(self, pcm_bytes: bytes):
         if self.recording and self._wav is not None:
@@ -39,7 +39,7 @@ class Recorder:
             self._wav.close()
             self._wav = None
         if self.recording:
-            print(f'[{datetime.utcnow().isoformat()}] recording stopped')
+            print(f'[{datetime.now(timezone.utc).isoformat()}] recording stopped')
         self.recording = False
 
 
@@ -49,9 +49,12 @@ async def fetch_agent_token() -> tuple[str, str]:
 
     qs = urllib.parse.urlencode({'room': ROOM_NAME, 'identity': 'ai-agent'})
     url = f'{TOKEN_SERVER}/getAgentToken?{qs}'
-    with urllib.request.urlopen(url, timeout=10) as response:
-        data = json.loads(response.read().decode('utf-8'))
-        return data['token'], data['wsUrl']
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            return data['token'], data['wsUrl']
+    except Exception as exc:
+        raise RuntimeError(f'Failed to fetch agent token from {url}') from exc
 
 
 async def transcribe(model, wav_path: Path):
