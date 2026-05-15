@@ -37,7 +37,7 @@
       const apiBaseEl = document.getElementById('apiBase');
       const roomNameEl = document.getElementById('roomName');
 
-      const LiveKit =
+      let liveKitLib =
         window.LivekitClient ||
         window.LiveKitClient ||
         window.livekitClient ||
@@ -73,11 +73,19 @@
         log(`control sent: ${type}`);
       }
 
+      async function resolveLiveKit() {
+        if (liveKitLib) return liveKitLib;
+        try {
+          liveKitLib = await import('https://unpkg.com/livekit-client/dist/livekit-client.esm.mjs');
+          return liveKitLib;
+        } catch {
+          throw new Error('LiveKit browser SDK failed to load. Check internet/CDN access and reload.');
+        }
+      }
+
       joinBtn.addEventListener('click', async () => {
         try {
-          if (!LiveKit) {
-            throw new Error('LiveKit browser SDK failed to load. Check internet/CDN access and reload.');
-          }
+          const LiveKit = await resolveLiveKit();
 
           joinBtn.disabled = true;
           const roomName = roomNameEl.value.trim() || 'voice-agent-room';
