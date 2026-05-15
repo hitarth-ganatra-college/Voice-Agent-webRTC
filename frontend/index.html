@@ -37,6 +37,12 @@
       const apiBaseEl = document.getElementById('apiBase');
       const roomNameEl = document.getElementById('roomName');
 
+      const LiveKit =
+        window.LivekitClient ||
+        window.LiveKitClient ||
+        window.livekitClient ||
+        null;
+
       let room;
       let micTrack;
 
@@ -69,19 +75,23 @@
 
       joinBtn.addEventListener('click', async () => {
         try {
+          if (!LiveKit) {
+            throw new Error('LiveKit browser SDK failed to load. Check internet/CDN access and reload.');
+          }
+
           joinBtn.disabled = true;
           const roomName = roomNameEl.value.trim() || 'voice-agent-room';
           const tokenData = await fetchToken('/getToken', roomName);
 
-          room = new LivekitClient.Room();
-          room.on(LivekitClient.RoomEvent.Disconnected, () => log('room disconnected'));
-          room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => log(`participant joined: ${p.identity}`));
-          room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (p) => log(`participant left: ${p.identity}`));
+          room = new LiveKit.Room();
+          room.on(LiveKit.RoomEvent.Disconnected, () => log('room disconnected'));
+          room.on(LiveKit.RoomEvent.ParticipantConnected, (p) => log(`participant joined: ${p.identity}`));
+          room.on(LiveKit.RoomEvent.ParticipantDisconnected, (p) => log(`participant left: ${p.identity}`));
 
           await room.connect(tokenData.wsUrl, tokenData.token);
           log(`connected as ${tokenData.identity} in room ${tokenData.room}`);
 
-          micTrack = await LivekitClient.createLocalAudioTrack();
+          micTrack = await LiveKit.createLocalAudioTrack();
           await room.localParticipant.publishTrack(micTrack);
           await micTrack.mute();
           log('persistent microphone track published and muted');
