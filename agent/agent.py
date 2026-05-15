@@ -71,8 +71,10 @@ async def fetch_agent_token() -> tuple[str, str]:
     try:
         data = json.loads(payload)
     except json.JSONDecodeError as exc:
+        payload_preview = payload[:120].replace('\n', ' ')
         raise RuntimeError(
-            f'Token server returned invalid JSON from {url}. {setup_hint}'
+            f'Token server returned invalid JSON from {url}. '
+            f'Received: {payload_preview!r}. {setup_hint}'
         ) from exc
 
     token = data.get('token')

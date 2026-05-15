@@ -68,7 +68,7 @@ Transcript logs appear in the Python agent console.
 
 ## Troubleshooting
 
-- If `python agent.py` fails at the `asyncio.run(run_agent())` line, the most common cause is token bootstrap:
+- If `python agent.py` fails to start with token or connection errors, the most common cause is token bootstrap:
   - Ensure token server is running from `server/` with `npm start`
   - Ensure `server/.env` has valid `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET`
   - Or set `LIVEKIT_URL` and `AGENT_TOKEN` for the agent directly to skip token fetch
