@@ -46,9 +46,9 @@
         : null;
 
       function findLiveKitOnWindow() {
-        for (const key of Object.keys(window)) {
-          if (!key.toLowerCase().includes('livekit')) continue;
-          const candidate = window[key];
+        const candidates = ['LiveKitClient', 'livekitClient', 'LivekitClient', 'LiveKit'];
+        for (const name of candidates) {
+          const candidate = window[name];
           if (
             candidate &&
             typeof candidate.Room === 'function' &&
