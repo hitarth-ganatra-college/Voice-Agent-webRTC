@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import os
 import urllib.error
@@ -15,36 +16,95 @@ TOKEN_SERVER = os.getenv('TOKEN_SERVER', 'http://localhost:3000')
 ROOM_NAME = os.getenv('ROOM_NAME', 'voice-agent-room')
 LIVEKIT_URL = os.getenv('LIVEKIT_URL')
 AGENT_TOKEN = os.getenv('AGENT_TOKEN')
-AUDIO_PATH = Path(__file__).with_name('received.wav')
+RECORDINGS_DIR = Path(__file__).with_name('recordings')
 TOKEN_RESPONSE_PREVIEW_LENGTH = 120
 
 
 class Recorder:
-    def __init__(self, file_path: Path):
-        self.file_path = file_path
+    def __init__(self, participant_identity: str, recordings_dir: Path):
+        self.participant_identity = participant_identity
+        self.recordings_dir = recordings_dir
+        self.file_path: Path | None = None
         self._wav = None
         self.recording = False
+        self._sample_rate: int | None = None
+        self._channels: int | None = None
 
-    def start(self, sample_rate: int, channels: int):
+    def start(self):
         self.stop()
+        self.file_path = None
+        self.recording = True
+        print(
+            f'[{datetime.now(timezone.utc).isoformat()}] '
+            f'recording armed for participant={self.participant_identity}'
+        )
+
+    def _open_wav_if_needed(self, sample_rate: int, channels: int):
+        if self._wav is not None:
+            return
+
+        self.recordings_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+        safe_identity = ''.join(c if c.isalnum() or c in ('-', '_') else '_' for c in self.participant_identity)
+        identity_hash = hashlib.sha256(self.participant_identity.encode('utf-8')).hexdigest()[:8]
+        self.file_path = self.recordings_dir / f'{safe_identity}-{identity_hash}-{timestamp}.wav'
         self._wav = wave.open(str(self.file_path), 'wb')
         self._wav.setnchannels(channels)
         self._wav.setsampwidth(2)
         self._wav.setframerate(sample_rate)
-        self.recording = True
+        self._sample_rate = sample_rate
+        self._channels = channels
         print(f'[{datetime.now(timezone.utc).isoformat()}] recording started -> {self.file_path}')
 
-    def push(self, pcm_bytes: bytes):
+    def push(self, frame: rtc.AudioFrame):
         if self.recording and self._wav is not None:
-            self._wav.writeframes(pcm_bytes)
+            if (
+                self._sample_rate is not None
+                and self._channels is not None
+                and (frame.sample_rate != self._sample_rate or frame.num_channels != self._channels)
+            ):
+                print(
+                    f'Audio format changed for participant={self.participant_identity}; '
+                    f'expected {self._sample_rate}Hz/{self._channels}ch, '
+                    f'got {frame.sample_rate}Hz/{frame.num_channels}ch. Skipping frame.'
+                )
+                return
+            self._wav.writeframes(bytes(frame.data))
+            return
+        if self.recording:
+            self._open_wav_if_needed(sample_rate=frame.sample_rate, channels=frame.num_channels)
+            if self._wav is not None:
+                self._wav.writeframes(bytes(frame.data))
 
-    def stop(self):
+    def stop(self) -> Path | None:
+        completed_file = self.file_path
         if self._wav is not None:
             self._wav.close()
             self._wav = None
+        self._sample_rate = None
+        self._channels = None
         if self.recording:
-            print(f'[{datetime.now(timezone.utc).isoformat()}] recording stopped')
+            print(
+                f'[{datetime.now(timezone.utc).isoformat()}] '
+                f'recording stopped for participant={self.participant_identity}'
+            )
         self.recording = False
+        return completed_file
+
+
+def get_participant_identity_from_data_packet(data_packet: rtc.DataPacket) -> str | None:
+    participant = getattr(data_packet, 'participant', None)
+    if participant is not None:
+        identity = getattr(participant, 'identity', None)
+        if identity:
+            return str(identity)
+
+    for attr in ('participant_identity', 'identity'):
+        value = getattr(data_packet, attr, None)
+        if value:
+            return str(value)
+
+    return None
 
 
 async def fetch_agent_token() -> tuple[str, str]:
@@ -90,14 +150,14 @@ async def fetch_agent_token() -> tuple[str, str]:
     return token, ws_url
 
 
-async def transcribe(model, wav_path: Path):
+async def transcribe(model, wav_path: Path, participant_identity: str):
     if not wav_path.exists() or wav_path.stat().st_size == 0:
-        print('No audio file to transcribe')
+        print(f'No audio file to transcribe for participant={participant_identity}')
         return
 
-    print('Running Whisper transcription...')
+    print(f'Running Whisper transcription for participant={participant_identity}...')
     result = model.transcribe(str(wav_path))
-    print('Transcript:', result.get('text', '').strip())
+    print(f'Transcript ({participant_identity}):', result.get('text', '').strip())
 
 
 async def run_agent():
@@ -107,35 +167,52 @@ async def run_agent():
         token, ws_url = await fetch_agent_token()
 
     room = rtc.Room()
-    recorder = Recorder(AUDIO_PATH)
+    recorders_by_identity: dict[str, Recorder] = {}
     whisper_model = whisper.load_model(os.getenv('WHISPER_MODEL', 'base'))
 
+    def get_recorder(participant_identity: str) -> Recorder:
+        recorder = recorders_by_identity.get(participant_identity)
+        if recorder is None:
+            recorder = Recorder(participant_identity=participant_identity, recordings_dir=RECORDINGS_DIR)
+            recorders_by_identity[participant_identity] = recorder
+        return recorder
+
     @room.on('data_received')
-    def on_data_received(data_packet: rtc.DataPacket):
+    def on_data_received(data_packet: rtc.DataPacket, participant: rtc.RemoteParticipant | None = None):
         try:
             payload = json.loads(bytes(data_packet.data).decode('utf-8'))
             msg_type = payload.get('type')
+            participant_identity = participant.identity if participant is not None else None
+            if not participant_identity:
+                participant_identity = get_participant_identity_from_data_packet(data_packet)
+            if not participant_identity:
+                print('Ignoring control message with unknown participant identity')
+                return
+
+            recorder = get_recorder(participant_identity)
             if msg_type == 'START':
-                recorder.start(sample_rate=48000, channels=1)
+                recorder.start()
             elif msg_type == 'STOP':
-                recorder.stop()
-                asyncio.create_task(transcribe(whisper_model, AUDIO_PATH))
+                audio_path = recorder.stop()
+                if audio_path:
+                    asyncio.create_task(transcribe(whisper_model, audio_path, participant_identity))
         except Exception as exc:
             print('Failed parsing control message:', exc)
 
     @room.on('track_subscribed')
-    def on_track_subscribed(track: rtc.Track, *_args):
+    def on_track_subscribed(track: rtc.Track, publication: rtc.TrackPublication, participant: rtc.RemoteParticipant):
         if track.kind != rtc.TrackKind.KIND_AUDIO:
             return
 
-        print('Audio track subscribed')
+        participant_identity = participant.identity
+        print(f'Audio track subscribed for participant={participant_identity}')
 
         async def consume_audio(audio_track: rtc.AudioTrack):
             stream = rtc.AudioStream(audio_track)
+            recorder = get_recorder(participant_identity)
             async for event in stream:
                 frame = event.frame
-                if recorder.recording:
-                    recorder.push(bytes(frame.data))
+                recorder.push(frame)
 
         asyncio.create_task(consume_audio(track))
 
@@ -145,7 +222,8 @@ async def run_agent():
     try:
         await asyncio.Event().wait()
     finally:
-        recorder.stop()
+        for recorder in recorders_by_identity.values():
+            recorder.stop()
         await room.disconnect()
 
 

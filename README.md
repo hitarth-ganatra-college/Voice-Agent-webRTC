@@ -6,7 +6,7 @@ Minimal greenfield MVP for a realtime **Human ↔ AI Voice Agent** using **LiveK
 
 - **frontend/**: Browser client that joins a LiveKit room, publishes one persistent microphone track, and sends `START`/`STOP` control messages.
 - **server/**: Node.js token server that issues LiveKit JWTs via `/getToken` and `/getAgentToken`.
-- **agent/**: Python AI media participant that joins the same room, captures incoming PCM to WAV, and transcribes with Whisper on `STOP`.
+- **agent/**: Python AI media participant that joins the same room, captures incoming PCM to per-user WAV files, and transcribes with Whisper on `STOP`.
 
 ## Prerequisites
 
@@ -75,6 +75,7 @@ Transcript logs appear in the Python agent console.
 
 ## Notes
 
-- This MVP is single-room, single-user oriented.
+- This MVP supports multiple concurrent users in one room by isolating START/STOP recording state per participant.
+- Recordings are written to `agent/recordings/<participant>-<timestamp>.wav` to avoid file collisions.
 - Recording control is separated from media transport using LiveKit data messages.
 - No streaming STT, no TTS, and no AI response publishing yet.
