@@ -18,7 +18,7 @@ if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || !LIVEKIT_URL) {
   console.warn('Missing LIVEKIT_API_KEY, LIVEKIT_API_SECRET, or LIVEKIT_URL in environment.');
 }
 
-function buildToken({ identity, roomName, name }) {
+async function buildToken({ identity, roomName, name }) {
   if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
     throw new Error('LiveKit credentials are not configured');
   }
@@ -36,7 +36,7 @@ function buildToken({ identity, roomName, name }) {
     canPublishData: true,
   });
 
-  return token.toJwt();
+  return await token.toJwt();
 }
 
 function randomId(prefix) {
@@ -47,22 +47,22 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/getToken', (req, res) => {
+app.get('/getToken', async (req, res) => {
   try {
     const room = String(req.query.room || 'voice-agent-room');
     const identity = String(req.query.identity || randomId('user'));
-    const token = buildToken({ identity, roomName: room, name: identity });
+    const token = await buildToken({ identity, roomName: room, name: identity });
     res.json({ token, room, identity, wsUrl: LIVEKIT_URL });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.get('/getAgentToken', (req, res) => {
+app.get('/getAgentToken', async (req, res) => {
   try {
     const room = String(req.query.room || 'voice-agent-room');
     const identity = String(req.query.identity || 'ai-agent');
-    const token = buildToken({ identity, roomName: room, name: 'AI Agent' });
+    const token = await buildToken({ identity, roomName: room, name: 'AI Agent' });
     res.json({ token, room, identity, wsUrl: LIVEKIT_URL });
   } catch (error) {
     res.status(500).json({ error: error.message });
