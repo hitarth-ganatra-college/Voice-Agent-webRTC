@@ -83,14 +83,17 @@
       async function resolveLiveKit() {
         if (liveKitClient) return liveKitClient;
         try {
+          if (!liveKitScriptEl) {
+            throw new Error('LiveKit SDK script tag not found in page');
+          }
           if (!liveKitEsmUrl) {
             throw new Error('missing LiveKit SDK script URL');
           }
           liveKitClient = await import(liveKitEsmUrl);
           return liveKitClient;
         } catch (error) {
-          const detail = error?.message ? ` (${error.message})` : '';
-          throw new Error(`LiveKit browser SDK failed to load. Check internet/CDN access and reload.${detail}`);
+          const reason = error?.message || 'unknown error';
+          throw new Error(`LiveKit browser SDK failed to load: ${reason}. Check internet/CDN access and reload.`);
         }
       }
 
