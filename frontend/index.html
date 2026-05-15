@@ -38,7 +38,6 @@
       const roomNameEl = document.getElementById('roomName');
 
       let liveKitLib =
-        window.LivekitClient ||
         window.LiveKitClient ||
         window.livekitClient ||
         null;
@@ -78,8 +77,9 @@
         try {
           liveKitLib = await import('https://unpkg.com/livekit-client/dist/livekit-client.esm.mjs');
           return liveKitLib;
-        } catch {
-          throw new Error('LiveKit browser SDK failed to load. Check internet/CDN access and reload.');
+        } catch (error) {
+          const detail = error?.message ? ` (${error.message})` : '';
+          throw new Error(`LiveKit browser SDK failed to load. Check internet/CDN access and reload.${detail}`);
         }
       }
 
