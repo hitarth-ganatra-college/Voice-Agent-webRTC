@@ -36,13 +36,16 @@
       const stopBtn = document.getElementById('stopBtn');
       const apiBaseEl = document.getElementById('apiBase');
       const roomNameEl = document.getElementById('roomName');
+      const liveKitUmdFile = 'livekit-client.umd.min.js';
+      const liveKitEsmFile = 'livekit-client.esm.mjs';
 
       const liveKitScriptEl = document.getElementById('livekit-client-sdk');
-      const liveKitEsmUrl = liveKitScriptEl?.src
-        ? liveKitScriptEl.src.replace('livekit-client.umd.min.js', 'livekit-client.esm.mjs')
+      const liveKitScriptSrc = liveKitScriptEl?.src || '';
+      const liveKitEsmUrl = liveKitScriptSrc.includes(liveKitUmdFile)
+        ? liveKitScriptSrc.replace(liveKitUmdFile, liveKitEsmFile)
         : null;
 
-      let liveKitClientSDK =
+      let liveKitClient =
         window.LiveKitClient ||
         window.livekitClient ||
         null;
@@ -78,13 +81,13 @@
       }
 
       async function resolveLiveKit() {
-        if (liveKitClientSDK) return liveKitClientSDK;
+        if (liveKitClient) return liveKitClient;
         try {
           if (!liveKitEsmUrl) {
             throw new Error('missing LiveKit SDK script URL');
           }
-          liveKitClientSDK = await import(liveKitEsmUrl);
-          return liveKitClientSDK;
+          liveKitClient = await import(liveKitEsmUrl);
+          return liveKitClient;
         } catch (error) {
           const detail = error?.message ? ` (${error.message})` : '';
           throw new Error(`LiveKit browser SDK failed to load. Check internet/CDN access and reload.${detail}`);
