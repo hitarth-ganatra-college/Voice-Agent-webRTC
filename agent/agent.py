@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import os
 import urllib.error
@@ -26,6 +27,8 @@ class Recorder:
         self.file_path: Path | None = None
         self._wav = None
         self.recording = False
+        self._sample_rate: int | None = None
+        self._channels: int | None = None
 
     def start(self):
         self.stop()
@@ -43,15 +46,25 @@ class Recorder:
         self.recordings_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
         safe_identity = ''.join(c if c.isalnum() or c in ('-', '_') else '_' for c in self.participant_identity)
-        self.file_path = self.recordings_dir / f'{safe_identity}-{timestamp}.wav'
+        identity_hash = hashlib.sha1(self.participant_identity.encode('utf-8')).hexdigest()[:8]
+        self.file_path = self.recordings_dir / f'{safe_identity}-{identity_hash}-{timestamp}.wav'
         self._wav = wave.open(str(self.file_path), 'wb')
         self._wav.setnchannels(channels)
         self._wav.setsampwidth(2)
         self._wav.setframerate(sample_rate)
+        self._sample_rate = sample_rate
+        self._channels = channels
         print(f'[{datetime.now(timezone.utc).isoformat()}] recording started -> {self.file_path}')
 
     def push(self, frame: rtc.AudioFrame):
         if self.recording and self._wav is not None:
+            if frame.sample_rate != self._sample_rate or frame.num_channels != self._channels:
+                print(
+                    f'Audio format changed for participant={self.participant_identity}; '
+                    f'expected {self._sample_rate}Hz/{self._channels}ch, '
+                    f'got {frame.sample_rate}Hz/{frame.num_channels}ch. Skipping frame.'
+                )
+                return
             self._wav.writeframes(bytes(frame.data))
             return
         if self.recording:
@@ -64,6 +77,8 @@ class Recorder:
         if self._wav is not None:
             self._wav.close()
             self._wav = None
+        self._sample_rate = None
+        self._channels = None
         if self.recording:
             print(
                 f'[{datetime.now(timezone.utc).isoformat()}] '
@@ -159,11 +174,13 @@ async def run_agent():
         return recorder
 
     @room.on('data_received')
-    def on_data_received(data_packet: rtc.DataPacket):
+    def on_data_received(data_packet: rtc.DataPacket, participant: rtc.RemoteParticipant | None = None):
         try:
             payload = json.loads(bytes(data_packet.data).decode('utf-8'))
             msg_type = payload.get('type')
-            participant_identity = get_participant_identity_from_data_packet(data_packet)
+            participant_identity = participant.identity if participant is not None else None
+            if not participant_identity:
+                participant_identity = get_participant_identity_from_data_packet(data_packet)
             if not participant_identity:
                 print('Ignoring control message with unknown participant identity')
                 return
