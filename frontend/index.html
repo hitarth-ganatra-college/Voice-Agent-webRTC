@@ -28,7 +28,7 @@
     <h3>Logs</h3>
     <pre id="logs"></pre>
 
-    <script src="https://unpkg.com/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <script id="livekit-client-sdk" src="https://unpkg.com/livekit-client@2.19.0/dist/livekit-client.umd.min.js"></script>
     <script>
       const logsEl = document.getElementById('logs');
       const joinBtn = document.getElementById('joinBtn');
@@ -36,6 +36,31 @@
       const stopBtn = document.getElementById('stopBtn');
       const apiBaseEl = document.getElementById('apiBase');
       const roomNameEl = document.getElementById('roomName');
+      const liveKitUmdFile = 'livekit-client.umd.min.js';
+      const liveKitEsmFile = 'livekit-client.esm.mjs';
+
+      const liveKitScriptEl = document.getElementById('livekit-client-sdk');
+      const liveKitScriptSrc = liveKitScriptEl?.src || '';
+      const liveKitEsmUrl = liveKitScriptSrc.includes(liveKitUmdFile)
+        ? liveKitScriptSrc.replace(liveKitUmdFile, liveKitEsmFile)
+        : null;
+
+      function findLiveKitOnWindow() {
+        const candidates = ['LiveKitClient', 'livekitClient', 'LivekitClient', 'LiveKit'];
+        for (const name of candidates) {
+          const candidate = window[name];
+          if (
+            candidate &&
+            typeof candidate.Room === 'function' &&
+            typeof candidate.createLocalAudioTrack === 'function'
+          ) {
+            return candidate;
+          }
+        }
+        return null;
+      }
+
+      let liveKitClient = null;
 
       let room;
       let micTrack;
@@ -67,21 +92,43 @@
         log(`control sent: ${type}`);
       }
 
+      async function resolveLiveKit() {
+        if (!liveKitClient) {
+          liveKitClient = findLiveKitOnWindow();
+        }
+        if (liveKitClient) return liveKitClient;
+        try {
+          if (!liveKitScriptEl) {
+            throw new Error('LiveKit SDK script tag not found in page');
+          }
+          if (!liveKitEsmUrl) {
+            throw new Error('missing LiveKit SDK script URL');
+          }
+          liveKitClient = await import(liveKitEsmUrl);
+          return liveKitClient;
+        } catch (error) {
+          const reason = error?.message || 'Unknown error during SDK import';
+          throw new Error(`LiveKit browser SDK failed to load: ${reason}. Check internet/CDN access, verify the CDN URL is reachable, and reload.`);
+        }
+      }
+
       joinBtn.addEventListener('click', async () => {
         try {
+          const liveKit = await resolveLiveKit();
+
           joinBtn.disabled = true;
           const roomName = roomNameEl.value.trim() || 'voice-agent-room';
           const tokenData = await fetchToken('/getToken', roomName);
 
-          room = new LivekitClient.Room();
-          room.on(LivekitClient.RoomEvent.Disconnected, () => log('room disconnected'));
-          room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => log(`participant joined: ${p.identity}`));
-          room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (p) => log(`participant left: ${p.identity}`));
+          room = new liveKit.Room();
+          room.on(liveKit.RoomEvent.Disconnected, () => log('room disconnected'));
+          room.on(liveKit.RoomEvent.ParticipantConnected, (p) => log(`participant joined: ${p.identity}`));
+          room.on(liveKit.RoomEvent.ParticipantDisconnected, (p) => log(`participant left: ${p.identity}`));
 
           await room.connect(tokenData.wsUrl, tokenData.token);
           log(`connected as ${tokenData.identity} in room ${tokenData.room}`);
 
-          micTrack = await LivekitClient.createLocalAudioTrack();
+          micTrack = await liveKit.createLocalAudioTrack();
           await room.localParticipant.publishTrack(micTrack);
           await micTrack.mute();
           log('persistent microphone track published and muted');
