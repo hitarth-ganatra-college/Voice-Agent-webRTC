@@ -28,7 +28,7 @@
     <h3>Logs</h3>
     <pre id="logs"></pre>
 
-    <script src="https://unpkg.com/livekit-client@2.19.0/dist/livekit-client.umd.min.js"></script>
+    <script id="livekit-client-sdk" src="https://unpkg.com/livekit-client@2.19.0/dist/livekit-client.umd.min.js"></script>
     <script>
       const logsEl = document.getElementById('logs');
       const joinBtn = document.getElementById('joinBtn');
@@ -37,7 +37,12 @@
       const apiBaseEl = document.getElementById('apiBase');
       const roomNameEl = document.getElementById('roomName');
 
-      let liveKitSDK =
+      const liveKitScriptEl = document.getElementById('livekit-client-sdk');
+      const liveKitEsmUrl = liveKitScriptEl?.src
+        ? liveKitScriptEl.src.replace('livekit-client.umd.min.js', 'livekit-client.esm.mjs')
+        : null;
+
+      let liveKitClientSDK =
         window.LiveKitClient ||
         window.livekitClient ||
         null;
@@ -73,10 +78,13 @@
       }
 
       async function resolveLiveKit() {
-        if (liveKitSDK) return liveKitSDK;
+        if (liveKitClientSDK) return liveKitClientSDK;
         try {
-          liveKitSDK = await import('https://unpkg.com/livekit-client@2.19.0/dist/livekit-client.esm.mjs');
-          return liveKitSDK;
+          if (!liveKitEsmUrl) {
+            throw new Error('missing LiveKit SDK script URL');
+          }
+          liveKitClientSDK = await import(liveKitEsmUrl);
+          return liveKitClientSDK;
         } catch (error) {
           const detail = error?.message ? ` (${error.message})` : '';
           throw new Error(`LiveKit browser SDK failed to load. Check internet/CDN access and reload.${detail}`);
@@ -85,21 +93,21 @@
 
       joinBtn.addEventListener('click', async () => {
         try {
-          const LiveKit = await resolveLiveKit();
+          const liveKit = await resolveLiveKit();
 
           joinBtn.disabled = true;
           const roomName = roomNameEl.value.trim() || 'voice-agent-room';
           const tokenData = await fetchToken('/getToken', roomName);
 
-          room = new LiveKit.Room();
-          room.on(LiveKit.RoomEvent.Disconnected, () => log('room disconnected'));
-          room.on(LiveKit.RoomEvent.ParticipantConnected, (p) => log(`participant joined: ${p.identity}`));
-          room.on(LiveKit.RoomEvent.ParticipantDisconnected, (p) => log(`participant left: ${p.identity}`));
+          room = new liveKit.Room();
+          room.on(liveKit.RoomEvent.Disconnected, () => log('room disconnected'));
+          room.on(liveKit.RoomEvent.ParticipantConnected, (p) => log(`participant joined: ${p.identity}`));
+          room.on(liveKit.RoomEvent.ParticipantDisconnected, (p) => log(`participant left: ${p.identity}`));
 
           await room.connect(tokenData.wsUrl, tokenData.token);
           log(`connected as ${tokenData.identity} in room ${tokenData.room}`);
 
-          micTrack = await LiveKit.createLocalAudioTrack();
+          micTrack = await liveKit.createLocalAudioTrack();
           await room.localParticipant.publishTrack(micTrack);
           await micTrack.mute();
           log('persistent microphone track published and muted');
