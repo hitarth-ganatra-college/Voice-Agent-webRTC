@@ -1,9 +1,6 @@
 import asyncio
 import json
 import os
-import urllib.error
-import urllib.parse
-import urllib.request
 import wave
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +13,7 @@ ROOM_NAME = os.getenv('ROOM_NAME', 'voice-agent-room')
 LIVEKIT_URL = os.getenv('LIVEKIT_URL')
 AGENT_TOKEN = os.getenv('AGENT_TOKEN')
 AUDIO_PATH = Path(__file__).with_name('received.wav')
+TOKEN_RESPONSE_PREVIEW_LENGTH = 120
 
 
 class Recorder:
@@ -47,6 +45,10 @@ class Recorder:
 
 
 async def fetch_agent_token() -> tuple[str, str]:
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
     qs = urllib.parse.urlencode({'room': ROOM_NAME, 'identity': 'ai-agent'})
     url = f'{TOKEN_SERVER}/getAgentToken?{qs}'
     setup_hint = (
@@ -71,7 +73,7 @@ async def fetch_agent_token() -> tuple[str, str]:
     try:
         data = json.loads(payload)
     except json.JSONDecodeError as exc:
-        payload_preview = payload[:120].replace('\n', ' ')
+        payload_preview = payload[:TOKEN_RESPONSE_PREVIEW_LENGTH].replace('\n', ' ')
         raise RuntimeError(
             f'Token server returned invalid JSON from {url}. '
             f'Received: {payload_preview!r}. {setup_hint}'
